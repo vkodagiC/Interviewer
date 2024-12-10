@@ -18,4 +18,4 @@ I make use of this API - https://github.com/alfaArghya/alfa-leetcode-api?tab=rea
 to get descriptions of leetcode problems. It is rate limited so don't use it to get a lot of
 problems in a short time otherwise you won't get any problems.
 
-leetcode.com - 
+leetcode.com - One of the best resources online for interview preparation.
