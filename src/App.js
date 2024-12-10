@@ -4,21 +4,23 @@ import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 function App() {
+  const [showDifficultySelection, setShowDifficultySelection] = useState(true); // Controls difficulty selection screen
   const [chat, setChat] = useState([
     {
       role: "system",
       content:
         `You are a technical interviewer. Ask the candidate 4-5 technical questions from Operating 
         systems and networks. Ask one question, wait for them to answer, then ask the next one. 
-        Then ask them 2 leetcode-style questions. The user will provide code for the question. If it 
-        is correct, do not explain the solution, ask them what is happening in the code and verify 
-        if what they said is what is being asked to solve in the question and what is written in their 
-        solution. If it is wrong, give them hints, never give them a full solution. If they select
-        easy - you call the function to get one easy question and one medium question. 
-        If they ask for medium, you must ask two medium questions. If they ask for hard, ask only
-        one hard question. Also only ask the next question if you are satisfied with the answer
-        or they give up for the question. At the end of the interview, write a detailed summary 
-        on what topics they should focus more on depending on what they got wrong.`,
+        After this, you will move on to the coding round. You will give the candidate a choice
+        to have an easy, medium, or hard interview. If they select easy, ask them 1 easy question and
+        1 medium question one after the other. If they select medium, ask them 2 medium questions.
+        If they select hard, ask them 1 hard question. If you have to ask 2 questions, i.e., when
+        they select easy or medium level of interview, only ask the next question if they have 
+        done the previous one correctly or given up on it. The candidate will provide code for the
+        question. If it is correct, do not explain the solution, ask them what is happening in the code
+        and verify if what they said is what is being asked to solve in the question and what is written.
+        If it is wrong, give them hints, never give them a full solution. At the end of the interview,
+        write a detailed summary on what topics they should focus more on depending on what they got wrong.`,
     },
     { role: "assistant", content: "Hello! I am your interviewer for today. Please introduce yourself." },
   ]);
@@ -29,6 +31,8 @@ function App() {
   const [language, setLanguage] = useState("c++"); // Default language
   const [timeLeft, setTimeLeft] = useState(60 * 60); // 1 hour in seconds
   const [isLoading, setIsLoading] = useState(false); // Typing indicator
+  const [questionCount, setQuestionCount] = useState(0); // Number of LeetCode-style questions asked
+  const [maxQuestions, setMaxQuestions] = useState(0); // Maximum questions for this session
 
   const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 
@@ -53,7 +57,6 @@ function App() {
     return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
   };
 
-  // Start speech recognition
   const startListening = () => {
     setIsListening(true);
     recognition.start();
@@ -73,7 +76,6 @@ function App() {
     };
   };
 
-  // Fetch a question from the backend
   const fetchQuestion = async (difficulty) => {
     try {
       const response = await axios.get(`http://localhost:5001/question/${difficulty}`);
@@ -84,13 +86,11 @@ function App() {
     }
   };
 
-  // Display the question and editor
   const displayQuestionAndEditor = (question) => {
     setCurrentQuestion(question);
     setCandidateCode(""); // Clear the editor for a new question
   };
 
-  // Play TTS audio
   const playAudioResponse = async (text) => {
     try {
       const response = await axios.post("http://localhost:5001/tts", { text }, { responseType: "blob" });
@@ -104,7 +104,6 @@ function App() {
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // Submit the code for ChatGPT feedback
   const submitCode = async () => {
     const newChat = [...chat, { role: "user", content: candidateCode }];
     setChat(newChat);
@@ -123,7 +122,6 @@ function App() {
     }
   };
 
-  // Send user input to ChatGPT
   const sendMessage = async () => {
     const newChat = [...chat, { role: "user", content: userInput }];
     setChat(newChat);
@@ -137,17 +135,15 @@ function App() {
       const { choices } = response.data;
       const assistantMessage = choices[0].message;
 
-      
       playAudioResponse(assistantMessage.content);
 
-      await sleep(2000);
+      await sleep(3000);
 
       setChat([...newChat, assistantMessage]);
-      // Handle function calls
+
       if (assistantMessage.function_call) {
         const { name, arguments: args } = assistantMessage.function_call;
 
-        // Parse arguments
         let parsedArgs;
         try {
           parsedArgs = JSON.parse(args);
@@ -157,10 +153,16 @@ function App() {
         }
 
         if (name === "fetch_question") {
+          if (questionCount >= maxQuestions) {
+            setChat([...chat, { role: "assistant", content: "That's the end of the coding round!" }]);
+            return;
+          }
+
           const question = await fetchQuestion(parsedArgs.difficulty);
           displayQuestionAndEditor(question);
-
-          // Add a ChatGPT response acknowledging the question
+          setQuestionCount((prev) => prev + 1);
+          playAudioResponse("Your question has been displayed on the right. Please take a look.");
+          await sleep(3000);
           setChat([
             ...newChat,
             { role: "assistant", content: "Your question has been displayed on the right. Please take a look." },
@@ -177,6 +179,38 @@ function App() {
 
     setUserInput("");
   };
+
+  const handleDifficultySelection = (difficulty) => {
+    setShowDifficultySelection(false); // Hide difficulty selection screen
+    setChat((prev) => [
+      ...prev,
+      { role: "assistant", content: `Difficulty level selected: ${difficulty}. Let's begin!` },
+    ]);
+
+    if (difficulty === "easy") setMaxQuestions(2);
+    else if (difficulty === "medium") setMaxQuestions(2);
+    else if (difficulty === "hard") setMaxQuestions(1);
+  };
+
+  if (showDifficultySelection) {
+    return (
+      <div className="container mt-5">
+        <h1 className="text-center mb-4">Welcome to the Interview</h1>
+        <h4 className="text-center mb-4">Please select your difficulty level to begin:</h4>
+        <div className="d-flex justify-content-center">
+          <button className="btn btn-primary mx-2" onClick={() => handleDifficultySelection("easy")}>
+            Easy
+          </button>
+          <button className="btn btn-warning mx-2" onClick={() => handleDifficultySelection("medium")}>
+            Medium
+          </button>
+          <button className="btn btn-danger mx-2" onClick={() => handleDifficultySelection("hard")}>
+            Hard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mt-5">

@@ -48,7 +48,7 @@ app.post("/tts", async (req, res) => {
 
 // Route to handle chat messages
 app.post("/chat", async (req, res) => {
-  const { messages, functions } = req.body;
+  const { messages } = req.body;
 
   try {
     const response = await axios.post(
@@ -56,11 +56,23 @@ app.post("/chat", async (req, res) => {
       {
         model: "gpt-4-0613",
         messages,
-        functions,
+        functions: [
+          {
+            name: "fetch_question",
+            description: "Fetches a question from the backend based on difficulty",
+            parameters: {
+              type: "object",
+              properties: {
+                difficulty: { type: "string" },
+              },
+              required: ["difficulty"],
+            },
+          },
+        ],
       },
       {
         headers: {
-          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
         },
       }
     );
@@ -72,14 +84,20 @@ app.post("/chat", async (req, res) => {
   }
 });
 
+
 // Fetch question from external API
 
 app.get("/question/:difficulty", async (req, res) => {
   const { difficulty } = req.params;
   console.log("Received request for difficulty level:", difficulty);
 
-  const difficultyFile = ["easy.txt", "medium.txt", "hard.txt"];
-  const selectedFile = difficultyFile[difficulty];
+  const difficultyFileMap = {
+    easy: "easy.txt",
+    medium: "medium.txt",
+    hard: "hard.txt",
+  };
+
+  const selectedFile = difficultyFileMap[difficulty];
   console.log("Selected file:", selectedFile);
 
   if (!selectedFile) {
@@ -93,27 +111,43 @@ app.get("/question/:difficulty", async (req, res) => {
     const text = await fs.readFile(filePath, "utf-8");
 
     const slugs = text.split("\n").filter((slug) => slug.trim());
-    const randomSlug = slugs[Math.floor(Math.random() * slugs.length)];
-    console.log("Selected question slug:", randomSlug);
-    const apiResponse = await fetch(
-      `https://alfa-leetcode-api.onrender.com/select?titleSlug=${randomSlug}`
-    );
-    if (!apiResponse.ok) throw new Error("API request failed");
+    let questionFound = false;
+    let randomSlug, apiResponse, result;
 
-    const result = await apiResponse.json();
+    while (!questionFound) {
+      randomSlug = slugs[Math.floor(Math.random() * slugs.length)];
+      console.log("Selected question slug:", randomSlug);
 
-    if (result.question) {
-      console.log("Question fetched successfully:", result.question);
-      res.json({ question: result.question });
-    } else {
-      console.error("Failed to fetch question details");
-      res.status(500).json({ error: "Failed to fetch question details" });
+      apiResponse = await fetch(
+        `https://alfa-leetcode-api.onrender.com/select?titleSlug=${randomSlug}`
+      );
+      if (!apiResponse.ok) {
+        console.error("API request failed for slug:", randomSlug);
+        continue; // Retry with a different slug
+      }
+
+      result = await apiResponse.json();
+
+      // Check if the question is valid and not paid-only
+      if (result && !result.isPaidOnly && result.question) {
+        questionFound = true;
+      } else {
+        console.log(
+          `Skipping slug "${randomSlug}" - isPaidOnly: ${result.isPaidOnly}, question exists: ${
+            result.question ? true : false
+          }`
+        );
+      }
     }
+
+    console.log("Question fetched successfully:", result.question);
+    res.json({ question: result.question });
   } catch (error) {
     console.error("Error fetching question:", error.message);
     res.status(500).json({ error: "Failed to fetch question" });
   }
 });
+
 
   
 // Start the server
