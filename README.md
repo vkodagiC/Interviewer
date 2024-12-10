@@ -11,3 +11,11 @@ do this step, you will not get any response from the application.
 
 Next we can start the servers. Do `npm start` in the main directory and another `npm start` in the backend directory. You can now use the
 application.
+
+# Acknowledgements
+
+I make use of this API - https://github.com/alfaArghya/alfa-leetcode-api?tab=readme-ov-file
+to get descriptions of leetcode problems. It is rate limited so don't use it to get a lot of
+problems in a short time otherwise you won't get any problems.
+
+leetcode.com - 
